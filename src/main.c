@@ -3,13 +3,23 @@
 #include "tokenise.h"
 #include "assert.h"
 #include "string.h"
+#include "math.h"
+
+char json_error_buffer[512];
 
 struct json_object* extract_object(token* tokens, size_t* index);
 struct json_array* extract_array(token* tokens, size_t* index);
 char* json_value_to_string(struct json_value value);
 
 bool parse_long(const char* str, long* value) {
+
     if(value == NULL) {
+        return false;
+    }
+
+    size_t len = strlen(str);
+
+    if(str[0] == '+' || str[0] == '.' || str[len-1] == '.'){
         return false;
     }
 
@@ -29,6 +39,12 @@ bool parse_double(const char* str, double* value) {
         return false;
     }
 
+    size_t len = strlen(str);
+
+    if(str[0] == '+' || str[0] == '.' || str[len-1] == '.'){
+        return false;
+    }
+
     char* end;
     double parsed_value = strtod(str, &end);
 
@@ -36,16 +52,31 @@ bool parse_double(const char* str, double* value) {
         return false;
     }
 
+    if(isnan(parsed_value) && str[0] == '-') {
+        return false;
+    }
+
+
     *value = parsed_value;
     return true;
 }
 
 struct json_value get_json_value(token* tokens, size_t* index) {
+    struct json_value json_error = {
+        .type = JSON_ERROR,
+        .value.string = json_error_buffer
+    };
+
     struct json_value value = {0};
 
+    if (tokens[*index].type == END_OF_TOKENS) {
+        sprintf(json_error_buffer, "End of tokens? %zu: %s", *index, tokens[*index].content);
+        return json_error;
+    }
+
     if (tokens[*index].type == END_OF_TOKENS || tokens[*index].type == ERROR_TOKEN) {
-        fprintf(stderr, "Unexpected token at index %zu: %s\n", *index, tokens[*index].content);
-        assert(false);
+        sprintf(json_error_buffer, "Unexpected token at index %zu: %s", *index, tokens[*index].content);
+        return json_error;
     }
 
     switch (tokens[*index].type) {
@@ -58,14 +89,44 @@ struct json_value get_json_value(token* tokens, size_t* index) {
     }
     case KEY_SYMBOL_TOKEN: {
         if (tokens[*index].content[0] == '{') {
+            struct json_object* object = extract_object(tokens, index);
+
+            if(object == NULL) {
+                sprintf(json_error_buffer, "Memory allocation failure");
+                return json_error;
+            }
+
+            if (object->error != NULL) {
+                strncpy(json_error.value.string, object->error, 255);
+
+                //free_json_object(object);
+
+                return json_error;
+            }
+
             value.type = JSON_OBJECT;
-            value.value.object = extract_object(tokens, index);
+            value.value.object = object;
         } else if (tokens[*index].content[0] == '[') {
+            struct json_array* array = extract_array(tokens, index);
+
+            if(array == NULL) {
+                sprintf(json_error_buffer, "Memory allocation failure");
+                return json_error;
+            }
+
+            if (array->error != NULL) {
+
+                //free_json_arry(array);
+
+                return json_error;
+            }
+
             value.type = JSON_ARRAY;
-            value.value.array = extract_array(tokens, index);
+            value.value.array = array;
+
         } else {
-            fprintf(stderr,"Unexpected symbol token at index %zu: %s\n", *index, tokens[*index].content);
-            assert(false);
+            sprintf(json_error_buffer,"Unexpected symbol token at index %zu: %s", *index, tokens[*index].content);
+            return json_error;
         }
         break;
     }
@@ -79,8 +140,8 @@ struct json_value get_json_value(token* tokens, size_t* index) {
             value.type = JSON_BOOLEAN;
             value.value.boolean = strcmp(content, "true") == 0;
         } else {
-            fprintf(stderr,"Unexpected keyword token at index %zu: %s\n", *index, content);
-            assert(false);
+            sprintf(json_error_buffer, "Unexpected keyword token at index %zu: %s", *index, content);
+            return json_error;
         }
         break;
     }
@@ -98,15 +159,15 @@ struct json_value get_json_value(token* tokens, size_t* index) {
             value.value.decimal = double_value;
         } else {
             // Invalid numeric value
-            fprintf(stderr,"Invalid numeric value at index %zu: %s\n", *index - 1, content);
-            assert(false);
+            sprintf(json_error_buffer, "Invalid numeric value at index %zu: %s", *index - 1, content);
+            return json_error;
         }
         break;
     }
     default:
         // Unknown or unsupported token type
-        fprintf(stderr,"Unhandled token type at index %zu: %d\n", *index, tokens[*index].type);
-        assert(false);
+        sprintf(json_error_buffer,"Unhandled token type at index %zu: %d", *index, tokens[*index].type);
+        return json_error;
         break;
     }
 
@@ -160,41 +221,48 @@ void insert_pair(struct json_object* object, struct json_pair* pair) {
 struct json_object* extract_object(token* tokens, size_t* index) {
     struct json_object* object = malloc(sizeof(struct json_object));
     if (!object) {
-        fprintf(stderr,"Memory allocation failed for JSON object\n");
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     object->head = NULL;
     object->tail = NULL;
+    object->error = NULL;
 
     // Ensure the current token is a '{'
     if (tokens[*index].type != KEY_SYMBOL_TOKEN || tokens[*index].content[0] != '{') {
-        fprintf(stderr,"Expected '{' at index %zu, but got '%s'\n", *index, tokens[*index].content);
-        free(object);
-        exit(EXIT_FAILURE);
+        sprintf(json_error_buffer,"Expected '{' at index %zu, but got '%s'", *index, tokens[*index].content);
+        object->error = json_error_buffer;
+        return object;
     }
 
     (*index)++; // Skip the '{' token
 
     while (tokens[*index].type != END_OF_TOKENS) {
+
         if (tokens[*index].type == KEY_SYMBOL_TOKEN && tokens[*index].content[0] == '}') {
             (*index)++; // Skip the '}' token
             return object;
         }
 
         struct json_pair* next_pair = get_json_pair(tokens, index);
+
         if (!next_pair) {
-            fprintf(stderr,"Error parsing key-value pair at index %zu\n", *index);
-            free(object);
-            exit(EXIT_FAILURE);
+            sprintf(json_error_buffer,"Error parsing key-value pair at index %zu", *index);
+            object->error = json_error_buffer;
+            return object;
+        }
+
+        if (next_pair->value.type == JSON_ERROR) {
+            object->error = json_error_buffer;
+            return object;
         }
 
         insert_pair(object, next_pair);
     }
 
-    fprintf(stderr,"Unexpected end of tokens while parsing object, missing '}'\n");
-    free(object);
-    exit(EXIT_FAILURE);
+    sprintf(json_error_buffer,"Unexpected end of tokens while parsing object, missing '}'");
+    object->error = json_error_buffer;
+    return object;
 }
 
 
@@ -255,10 +323,12 @@ size_t get_array_size(token* tokens, size_t* index) {
 
 struct json_array* extract_array(token* tokens, size_t* index) {
     struct json_array* array = malloc(sizeof(struct json_array));
+
     if (!array) {
-        fprintf(stderr, "Memory allocation failed for JSON array\n");
-        exit(EXIT_FAILURE);
+        return NULL;
     }
+
+    array->error = NULL;
 
     (*index) += 1; // Skip the '[' token
     size_t size = get_array_size(tokens, index);
@@ -266,33 +336,36 @@ struct json_array* extract_array(token* tokens, size_t* index) {
     array->size = size;
     array->values = malloc(sizeof(struct json_value) * size);
     if (!array->values) {
-        fprintf(stderr, "Memory allocation failed for array values\n");
-        free(array);
-        exit(EXIT_FAILURE);
+        sprintf(json_error_buffer, "Memory allocation failed for array values");
+        array->error = json_error_buffer;
+        return array;
     }
 
     for (size_t i = 0; i < size; i++) {
         array->values[i] = get_json_value(tokens, index);
+
+        if(array->values[i].type == JSON_ERROR) {
+            array->error = json_error_buffer;
+            return array;
+        }
 
         if (tokens[*index].type == KEY_SYMBOL_TOKEN && tokens[*index].content[0] == ',') {
             (*index)++;
         } else if (tokens[*index].type == KEY_SYMBOL_TOKEN && tokens[*index].content[0] == ']') {
             break;
         } else if (i < size - 1) {
-            fprintf(stderr,"Expected ',' or ']' at index %zu, but got '%s'\n", *index, tokens[*index].content);
-            free(array->values);
-            free(array);
-            exit(EXIT_FAILURE);
+            sprintf(json_error_buffer, "Expected ',' or ']' at index %zu, but got '%s'", *index, tokens[*index].content);
+            array->error = json_error_buffer;
+            return array;
         }
     }
 
     if (tokens[*index].type == KEY_SYMBOL_TOKEN && tokens[*index].content[0] == ']') {
         (*index)++;
     } else {
-        fprintf(stderr,"Expected ']' at the end of the array at index %zu, but got '%s'\n", *index, tokens[*index].content);
-        free(array->values);
-        free(array);
-        exit(EXIT_FAILURE);
+        sprintf(json_error_buffer, "Expected ']' at the end of the array at index %zu, but got '%s'", *index, tokens[*index].content);
+        array->error = json_error_buffer;
+        return array;
     }
 
     return array;
@@ -302,7 +375,7 @@ struct json_array* extract_array(token* tokens, size_t* index) {
 char* object_to_string(struct json_object* object) {
     char* big_buffer = (char*)malloc(16*1024);
     char* small_buff;
-    int written = sprintf(big_buffer, "{\n");
+    int written = sprintf(big_buffer, "{");
 
     struct json_pair* next = object->head;
     while (next != NULL)
@@ -314,13 +387,13 @@ char* object_to_string(struct json_object* object) {
             written += sprintf(big_buffer+written, ",");
         }
 
-        written += sprintf(big_buffer+written, "\n");
+        written += sprintf(big_buffer+written, " ");
 
         free(small_buff);
         next = next->next;
     }
 
-    written = sprintf(big_buffer+written, "}\n");
+    written = sprintf(big_buffer+written, "}");
     return big_buffer;
 }
 
@@ -365,24 +438,42 @@ char* json_value_to_string(struct json_value value) {
         return array_buff;
     }
     else {
-        fprintf(stderr,"Unhandled type? %d\n", value.type);
+        fprintf(stderr,"Unhandled type? %d", value.type);
         assert(false);
     }
 
     return buff;
 }
 
-struct json_object* parse_file(const char* path) {
+bool is_ascii_only(const char *str) {
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        if ((unsigned char)str[i] > 0x7F) {
+            // Non-ASCII character found
+            return false;
+        }
+    }
+    return true;
+}
+
+struct json_value parse_file(const char* path) {
     static const char* keywords[] = {"null", "true", "false"};
     static const char* key_symbols = "{}:,[]";
 
+    struct json_value json_error = {
+        .type = JSON_ERROR,
+        .value.string = json_error_buffer
+    };
+
+
     if(!path) {
-        return NULL;
+        sprintf(json_error_buffer, "Path: %s Not found", path);
+        return json_error; //Give error
     }
 
     FILE* fd = fopen(path, "r");
     if(fd == NULL) {
-        return NULL;
+        sprintf(json_error_buffer, "Unable to open file: %s", path);
+        return json_error; //Give error
     }
 
     fseek(fd, 0, SEEK_END);
@@ -391,54 +482,68 @@ struct json_object* parse_file(const char* path) {
 
     char *buffer = (char *)malloc(file_size + 1);
     if (buffer == NULL) {
+        sprintf(json_error_buffer, "Failed to declare buffer");
         fclose(fd);
-        return NULL;
+        return json_error; //Give error
     }
 
 
     size_t bytes_read = fread(buffer, 1, file_size, fd);
     if (bytes_read != file_size) {
+        sprintf(json_error_buffer, "???");
         free(buffer);
         fclose(fd);
-        return NULL;
+        return json_error; //Give error
     }
 
     buffer[file_size] = '\0';
 
+    if(!is_ascii_only(buffer)) {
+        sprintf(json_error_buffer, "UTF-8 Not supported!");
+        return json_error;
+    }
 
     token* tokens = tokenise(buffer, keywords, 3, key_symbols);
 
     size_t token_len = -1;
-    while (tokens[++token_len].type != END_OF_TOKENS);
+    while (tokens[++token_len].type != END_OF_TOKENS) {
+        printf("%s\n", tokens[token_len].content);
+    }
 
     size_t index = 0;
-    struct json_object* object = extract_object(tokens, &index);
+    struct json_value value = get_json_value(tokens, &index);
 
-    return object;
+    if(index != token_len) {
+        sprintf(json_error_buffer, "Trailing"); //TODO: better error? Idk what it should say
+        return json_error;
+    }
+
+    return value;
 }
 
 int main(int argc, char const *argv[])
 {
 
     if(argc < 2) {
-        fprintf(stderr, "%s: Must provide file path!\n", argv[0]);
+        fprintf(stderr, "%s: Must provide file path!", argv[0]);
         return EXIT_FAILURE;
     }
 
-    struct json_object* object = parse_file(argv[1]);
+    struct json_value value = parse_file(argv[1]);
 
-    if(!object) {
+    if(value.type == JSON_ERROR) {
         fprintf(stderr, "%s: Failed to parse file: \"%s\"\n", argv[0], argv[1]);
+        fprintf(stderr, "Error: %s\n", value.value.string);
         return EXIT_FAILURE;
     }
 
-    char* object_string = object_to_string(object);
+    char* value_to_string = json_value_to_string(value);
 
-    if (!object_string) {
+    if (!value_to_string) {
         return EXIT_FAILURE;
     }
 
-    printf("%s\n", object_string);
+    printf("%s\n", value_to_string);
 
     return 0;
 }

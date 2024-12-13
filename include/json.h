@@ -3,7 +3,7 @@
 #include "stdbool.h"
 
 enum json_type {
-    JSON_UNKNOWN = 0,
+    JSON_ERROR = 0,
     JSON_NULL,
     JSON_BOOLEAN,
     JSON_INT,
@@ -18,11 +18,13 @@ enum json_type {
 struct json_object {
     struct json_pair* head;
     struct json_pair* tail;
+    char* error;
 };
 
 struct json_array {
     struct json_value* values;
     size_t size;
+    char* error;
 };
 
 struct json_value {
