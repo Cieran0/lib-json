@@ -61,7 +61,6 @@ bool __parse_long(const char* str, long* value) {
 }
 
 bool parse_long(const char* str, long* value) {
-    printf("Long: [%s]\n", str);
 
     size_t len = strlen(str);
 
@@ -83,7 +82,6 @@ bool parse_long(const char* str, long* value) {
 }
 
 bool parse_fraction(const char* str, long* value) {
-    printf("Fra: [%s]\n", str);
 
     if(str[0] == '+'){
         return false;
@@ -93,7 +91,6 @@ bool parse_fraction(const char* str, long* value) {
 }
 
 bool parse_exponent(const char* str, long* value) {
-    printf("Expo: [%s]\n", str);
 
     return __parse_long(str, value);
 }
@@ -169,7 +166,6 @@ bool parse_double(const char* str, double* value) {
     }
 
     if(!parse_long(before_dot_str, &before_dot)) {
-        printf("HERE!\n");
         return false; //TODO: free properly
     }    
 
@@ -655,7 +651,7 @@ struct json_value parse_file(const char* path) {
 
     size_t token_len = -1;
     while (tokens[++token_len].type != END_OF_TOKENS) {
-        printf("%s\n", tokens[token_len].content);
+        //printf("%s\n", tokens[token_len].content);
     }
 
     size_t index = 0;
