@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Project name and version
-project(MyProject VERSION 1.0 LANGUAGES C)
+project(lib-json VERSION 1.0 LANGUAGES C)
 
 # Specify C standard
 set(CMAKE_C_STANDARD 11)
@@ -9,13 +9,14 @@ set(CMAKE_C_STANDARD_REQUIRED True)
 
 # Directories for headers and sources
 include_directories(include)
+include_directories(include/internal)
 file(GLOB_RECURSE SOURCES src/*.c)
 
-# Output executable name
-set(EXECUTABLE_NAME json)
+# Output library name
+set(LIBRARY_NAME json)
 
-# Add executable
-add_executable(${EXECUTABLE_NAME} ${SOURCES})
+# Add library
+add_library(${LIBRARY_NAME} STATIC ${SOURCES})
 
 # Directory to clone and build lib-tokenise
 set(LIB_TOKENISE_DIR ${CMAKE_BINARY_DIR}/lib-tokenise)
@@ -39,13 +40,14 @@ add_custom_target(build_lib_tokenise ALL
 set(LIB_TOKENISE_LIB ${LIB_TOKENISE_DIR}/libtokenise.a)
 
 # Ensure the library is built before linking
-add_dependencies(${EXECUTABLE_NAME} build_lib_tokenise)
+add_dependencies(${LIBRARY_NAME} build_lib_tokenise)
 
-# Link lib-tokenise to the project
-target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${LIB_TOKENISE_LIB} m)
+# Link lib-tokenise to the library
+target_link_libraries(${LIBRARY_NAME} PRIVATE ${LIB_TOKENISE_LIB})
 
 # Include lib-tokenise headers
 include_directories(${LIB_TOKENISE_DIR}/include)
 
 # Install step (optional)
-install(TARGETS ${EXECUTABLE_NAME} DESTINATION bin)
+install(TARGETS ${LIBRARY_NAME} DESTINATION lib)
+install(DIRECTORY include/ DESTINATION include)

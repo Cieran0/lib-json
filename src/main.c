@@ -5,197 +5,14 @@
 #include "string.h"
 #include "math.h"
 
+#include "parse.h"
+
 char json_error_buffer[512];
 
 struct json_object* extract_object(token* tokens, size_t* index);
 struct json_array* extract_array(token* tokens, size_t* index);
 char* json_value_to_string(struct json_value value);
 
-char* substr(const char* string, size_t start, size_t end) {
-    if(!string) {
-        return NULL;
-    }
-
-    size_t length = strlen(string);
-
-    if(length == 0 && start == 0 && end == 0) {
-        char* output = (char*)malloc(1);
-        output[0] = '\0';
-        return output;
-    }
-    
-    if(start > end || start >= length || end >= length) {
-        return NULL;
-    }
-
-    size_t size = end - start + 1;
-
-    char* output = (char*)malloc(size + 1);
-    memcpy(output, string+start, size);
-    output[size]= '\0';
-
-    return output;
-}
-
-bool __parse_long(const char* str, long* value) {
-    if(value == NULL) {
-        return false;
-    }
-
-    size_t len = strlen(str);
-
-    if(len == 0) {
-        return false;
-    }
-
-    char* end;
-    long parsed_value = strtol(str, &end, 10);
-
-    if(*end != '\0'){
-        return false;
-    }
-
-    *value = parsed_value;
-
-    return true;
-}
-
-bool parse_long(const char* str, long* value) {
-
-    size_t len = strlen(str);
-
-    size_t start = 0;
-    if(str[start] == '-') {
-        start++;
-    }
-
-    if(str[start] == '0' && len-start != 1) {
-        return false;
-    }
-
-    if(str[0] == '+'){
-        return false;
-    }
-
-
-    return __parse_long(str, value);
-}
-
-bool parse_fraction(const char* str, long* value) {
-
-    if(str[0] == '+'){
-        return false;
-    }
-
-    return __parse_long(str, value);
-}
-
-bool parse_exponent(const char* str, long* value) {
-
-    return __parse_long(str, value);
-}
-
-bool parse_double(const char* str, double* value) {
-    if(value == NULL) {
-        return false;
-    }
-
-    size_t len = strlen(str);
-
-    long before_dot;
-    long after_dot;
-    long after_expo;
-    long exponent = 0;
-    double mantissa = 0;
-
-    int dot_pos = -1;
-    int expo_pos = -1;
-
-    for (size_t i = 0; i < len; i++) {
-        if(str[i] == '.') {
-            dot_pos = i;
-        } else if (str[i] == 'e' || str[i] == 'E') {
-            expo_pos = i;
-        }
-
-        if(dot_pos != -1 && expo_pos != -1) {
-            break;
-        }
-    }
-
-    if(expo_pos != -1 && (expo_pos-dot_pos) <= 1) {
-        return false;
-    }
-
-    if(expo_pos == len-1 || dot_pos == len-1) {
-        return false;
-    }
-
-    char* before_dot_str = NULL;
-    char* after_dot_str = NULL;
-    char* expo_str = NULL;
-    char* left = str;
-    bool left_free = true;
-
-    if(expo_pos != -1) {
-        expo_str = substr(str, expo_pos+1, len-1);
-        left = substr(str, 0, expo_pos-1);
-        left_free = false;
-    }
-
-    if(dot_pos != -1) {
-        before_dot_str = substr(left, 0, dot_pos-1);
-        after_dot_str = substr(left, dot_pos+1, strlen(left)-1);
-
-        if(!left_free) {
-            free(left);
-            left_free = true;
-        }
-    } else {
-        before_dot_str = left;
-    }
-
-    char buff[256] = {0};
-
-    int written = sprintf(buff, "%s", before_dot_str);
-    if(after_dot_str) {
-        written+= sprintf(buff+written, ".%s", after_dot_str);
-    }
-    if(expo_str) {
-        written+= sprintf(buff+written, "e%s", expo_str);
-    }
-
-    if(!parse_long(before_dot_str, &before_dot)) {
-        return false; //TODO: free properly
-    }    
-
-    if(after_dot_str != NULL && !(parse_fraction(after_dot_str, &after_dot))) {
-        return false; //TODO: free properly
-    }    
-
-    if(expo_str != NULL && !(parse_exponent(expo_str, &exponent))) {
-        return false; //TODO: free properly
-    }    
-
-    int len_after_dot = len - dot_pos - 1;
-    if (after_dot_str != NULL) {
-        long factor = pow(10, len_after_dot);
-        *value = ((double)before_dot) + (((double)after_dot) / factor);
-    } else {
-        *value = (double)before_dot;
-    }
-
-    if(expo_pos != -1) {
-        double factor = pow(10, exponent);
-        *value = ((double)*value) * factor;
-    }
-
-    if(!left_free) {
-        free(left);
-    }
-
-    return true;
-}
 
 struct json_value get_json_value(token* tokens, size_t* index) {
     struct json_value json_error = {
@@ -599,7 +416,7 @@ bool is_ascii_only(const char *str) {
     return true;
 }
 
-struct json_value parse_file(const char* path) {
+struct json_value parse_string(const char* json_string) {
     static const char* keywords[] = {"null", "true", "false"};
     static const char* key_symbols = "{}:,[]";
 
@@ -609,50 +426,15 @@ struct json_value parse_file(const char* path) {
     };
 
 
-    if(!path) {
-        sprintf(json_error_buffer, "Path: %s Not found", path);
-        return json_error; //Give error
-    }
-
-    FILE* fd = fopen(path, "r");
-    if(fd == NULL) {
-        sprintf(json_error_buffer, "Unable to open file: %s", path);
-        return json_error; //Give error
-    }
-
-    fseek(fd, 0, SEEK_END);
-    size_t file_size = ftell(fd);
-    rewind(fd);
-
-    char *buffer = (char *)malloc(file_size + 1);
-    if (buffer == NULL) {
-        sprintf(json_error_buffer, "Failed to declare buffer");
-        fclose(fd);
-        return json_error; //Give error
-    }
-
-
-    size_t bytes_read = fread(buffer, 1, file_size, fd);
-    if (bytes_read != file_size) {
-        sprintf(json_error_buffer, "???");
-        free(buffer);
-        fclose(fd);
-        return json_error; //Give error
-    }
-
-    buffer[file_size] = '\0';
-
-    if(!is_ascii_only(buffer)) {
+    if(!is_ascii_only(json_string)) {
         sprintf(json_error_buffer, "UTF-8 Not supported!");
         return json_error;
     }
 
-    token* tokens = tokenise(buffer, keywords, 3, key_symbols);
+    token* tokens = tokenise(json_string, keywords, 3, key_symbols);
 
     size_t token_len = -1;
-    while (tokens[++token_len].type != END_OF_TOKENS) {
-        //printf("%s\n", tokens[token_len].content);
-    }
+    while (tokens[++token_len].type != END_OF_TOKENS);;
 
     size_t index = 0;
     struct json_value value = get_json_value(tokens, &index);
@@ -663,31 +445,4 @@ struct json_value parse_file(const char* path) {
     }
 
     return value;
-}
-
-int main(int argc, char const *argv[])
-{
-
-    if(argc < 2) {
-        fprintf(stderr, "%s: Must provide file path!", argv[0]);
-        return EXIT_FAILURE;
-    }
-
-    struct json_value value = parse_file(argv[1]);
-
-    if(value.type == JSON_ERROR) {
-        fprintf(stderr, "%s: Failed to parse file: \"%s\"\n", argv[0], argv[1]);
-        fprintf(stderr, "Error: %s\n", value.value.string);
-        return EXIT_FAILURE;
-    }
-
-    char* value_to_string = json_value_to_string(value);
-
-    if (!value_to_string) {
-        return EXIT_FAILURE;
-    }
-
-    printf("%s\n", value_to_string);
-
-    return 0;
 }
