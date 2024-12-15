@@ -54,3 +54,5 @@ json
 *.json
 external/bin/*
 build/*
+times.txt
+sum.txt

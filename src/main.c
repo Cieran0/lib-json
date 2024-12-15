@@ -11,15 +11,40 @@ struct json_object* extract_object(token* tokens, size_t* index);
 struct json_array* extract_array(token* tokens, size_t* index);
 char* json_value_to_string(struct json_value value);
 
-bool parse_long(const char* str, long* value) {
+char* substr(const char* string, size_t start, size_t end) {
+    if(!string) {
+        return NULL;
+    }
 
+    size_t length = strlen(string);
+
+    if(length == 0 && start == 0 && end == 0) {
+        char* output = (char*)malloc(1);
+        output[0] = '\0';
+        return output;
+    }
+    
+    if(start > end || start >= length || end >= length) {
+        return NULL;
+    }
+
+    size_t size = end - start + 1;
+
+    char* output = (char*)malloc(size + 1);
+    memcpy(output, string+start, size);
+    output[size]= '\0';
+
+    return output;
+}
+
+bool __parse_long(const char* str, long* value) {
     if(value == NULL) {
         return false;
     }
 
     size_t len = strlen(str);
 
-    if(str[0] == '+' || str[0] == '.' || str[len-1] == '.'){
+    if(len == 0) {
         return false;
     }
 
@@ -31,7 +56,46 @@ bool parse_long(const char* str, long* value) {
     }
 
     *value = parsed_value;
+
     return true;
+}
+
+bool parse_long(const char* str, long* value) {
+    printf("Long: [%s]\n", str);
+
+    size_t len = strlen(str);
+
+    size_t start = 0;
+    if(str[start] == '-') {
+        start++;
+    }
+
+    if(str[start] == '0' && len-start != 1) {
+        return false;
+    }
+
+    if(str[0] == '+'){
+        return false;
+    }
+
+
+    return __parse_long(str, value);
+}
+
+bool parse_fraction(const char* str, long* value) {
+    printf("Fra: [%s]\n", str);
+
+    if(str[0] == '+'){
+        return false;
+    }
+
+    return __parse_long(str, value);
+}
+
+bool parse_exponent(const char* str, long* value) {
+    printf("Expo: [%s]\n", str);
+
+    return __parse_long(str, value);
 }
 
 bool parse_double(const char* str, double* value) {
@@ -41,23 +105,99 @@ bool parse_double(const char* str, double* value) {
 
     size_t len = strlen(str);
 
-    if(str[0] == '+' || str[0] == '.' || str[len-1] == '.'){
+    long before_dot;
+    long after_dot;
+    long after_expo;
+    long exponent = 0;
+    double mantissa = 0;
+
+    int dot_pos = -1;
+    int expo_pos = -1;
+
+    for (size_t i = 0; i < len; i++) {
+        if(str[i] == '.') {
+            dot_pos = i;
+        } else if (str[i] == 'e' || str[i] == 'E') {
+            expo_pos = i;
+        }
+
+        if(dot_pos != -1 && expo_pos != -1) {
+            break;
+        }
+    }
+
+    if(expo_pos != -1 && (expo_pos-dot_pos) <= 1) {
         return false;
     }
 
-    char* end;
-    double parsed_value = strtod(str, &end);
-
-    if(*end != '\0'){
+    if(expo_pos == len-1 || dot_pos == len-1) {
         return false;
     }
 
-    if(isnan(parsed_value) && str[0] == '-') {
-        return false;
+    char* before_dot_str = NULL;
+    char* after_dot_str = NULL;
+    char* expo_str = NULL;
+    char* left = str;
+    bool left_free = true;
+
+    if(expo_pos != -1) {
+        expo_str = substr(str, expo_pos+1, len-1);
+        left = substr(str, 0, expo_pos-1);
+        left_free = false;
     }
 
+    if(dot_pos != -1) {
+        before_dot_str = substr(left, 0, dot_pos-1);
+        after_dot_str = substr(left, dot_pos+1, strlen(left)-1);
 
-    *value = parsed_value;
+        if(!left_free) {
+            free(left);
+            left_free = true;
+        }
+    } else {
+        before_dot_str = left;
+    }
+
+    char buff[256] = {0};
+
+    int written = sprintf(buff, "%s", before_dot_str);
+    if(after_dot_str) {
+        written+= sprintf(buff+written, ".%s", after_dot_str);
+    }
+    if(expo_str) {
+        written+= sprintf(buff+written, "e%s", expo_str);
+    }
+
+    if(!parse_long(before_dot_str, &before_dot)) {
+        printf("HERE!\n");
+        return false; //TODO: free properly
+    }    
+
+    if(after_dot_str != NULL && !(parse_fraction(after_dot_str, &after_dot))) {
+        return false; //TODO: free properly
+    }    
+
+    if(expo_str != NULL && !(parse_exponent(expo_str, &exponent))) {
+        return false; //TODO: free properly
+    }    
+
+    int len_after_dot = len - dot_pos - 1;
+    if (after_dot_str != NULL) {
+        long factor = pow(10, len_after_dot);
+        *value = ((double)before_dot) + (((double)after_dot) / factor);
+    } else {
+        *value = (double)before_dot;
+    }
+
+    if(expo_pos != -1) {
+        double factor = pow(10, exponent);
+        *value = ((double)*value) * factor;
+    }
+
+    if(!left_free) {
+        free(left);
+    }
+
     return true;
 }
 
@@ -191,7 +331,15 @@ struct json_pair* get_json_pair(token* tokens, size_t* index) {
 
     key = tokens[*index].content; //Should copy
 
-    *index += 2; // Just trust its a ':'
+    *index += 1;
+
+    if(tokens[*index].type != KEY_SYMBOL_TOKEN || tokens[*index].content[0] != ':') {
+        free(pair);
+        return NULL; //TODO: Fix this to give a proper error message!
+    }
+
+    *index += 1;
+
 
     value = get_json_value(tokens, index);
 

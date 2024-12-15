@@ -42,7 +42,7 @@ set(LIB_TOKENISE_LIB ${LIB_TOKENISE_DIR}/libtokenise.a)
 add_dependencies(${EXECUTABLE_NAME} build_lib_tokenise)
 
 # Link lib-tokenise to the project
-target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${LIB_TOKENISE_LIB})
+target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${LIB_TOKENISE_LIB} m)
 
 # Include lib-tokenise headers
 include_directories(${LIB_TOKENISE_DIR}/include)
