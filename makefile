@@ -1,7 +1,7 @@
-json: src/*.c include/*.h
-	gcc src/*.c -Iinclude -Wall -o json -Lexternal/bin -ltokenise -Iexternal/lib-tokenise/include
+all:
+	mkdir -p build
+	cd build && cmake .. && make
+	cp build/json json
 
-
-get_libs: external/lib-tokenise/src/*.c
-	$(MAKE) -C external/lib-tokenise
-	cp external/lib-tokenise/*.a external/bin/
+clean:
+	rm -rf build
