@@ -46,4 +46,4 @@ struct json_pair {
 };
 
 
-struct json_value parse_string(const char* json_string);
+struct json_value json_parse_string(const char* json_string);

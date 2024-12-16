@@ -416,7 +416,7 @@ bool is_ascii_only(const char *str) {
     return true;
 }
 
-struct json_value parse_string(const char* json_string) {
+struct json_value json_parse_string(const char* json_string) {
     static const char* keywords[] = {"null", "true", "false"};
     static const char* key_symbols = "{}:,[]";
 
