@@ -47,3 +47,4 @@ struct json_pair {
 
 
 struct json_value json_parse_string(const char* json_string);
+char* json_value_to_string(struct json_value value);
