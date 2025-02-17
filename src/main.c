@@ -17,7 +17,7 @@ char* json_value_to_string(struct json_value value);
 struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) {
     struct json_value json_error = {
         .type = JSON_ERROR,
-        .value.string = json_error_buffer
+        .as.string = json_error_buffer
     };
 
     struct json_value value = {0};
@@ -35,8 +35,8 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
     switch (tokens[*index].type) {
     case STRING_TOKEN: {
         size_t size = strlen(tokens[*index].content);
-        value.value.string = alloc(size + 1); 
-        strncpy(value.value.string, tokens[*index].content, size+1);
+        value.as.string = alloc(size + 1); 
+        strncpy(value.as.string, tokens[*index].content, size+1);
         value.type = JSON_STRING;
         (*index)++;
         break;
@@ -51,7 +51,7 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
             }
 
             if (object->error != NULL) {
-                strncpy(json_error.value.string, object->error, 255);
+                strncpy(json_error.as.string, object->error, 255);
 
                 //free_json_object(object);
 
@@ -59,7 +59,7 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
             }
 
             value.type = JSON_OBJECT;
-            value.value.object = object;
+            value.as.object = object;
         } else if (tokens[*index].content[0] == '[') {
             struct json_array* array = extract_array(tokens, index, alloc);
 
@@ -76,7 +76,7 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
             }
 
             value.type = JSON_ARRAY;
-            value.value.array = array;
+            value.as.array = array;
 
         } else {
             sprintf(json_error_buffer,"Unexpected symbol token at index %zu: %s", *index, tokens[*index].content);
@@ -89,10 +89,10 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
         (*index)++;
         if (strcmp(content, "null") == 0) {
             value.type = JSON_NULL;
-            value.value.object = NULL;
+            value.as.object = NULL;
         } else if (strcmp(content, "true") == 0 || strcmp(content, "false") == 0) {
             value.type = JSON_BOOLEAN;
-            value.value.boolean = strcmp(content, "true") == 0;
+            value.as.boolean = strcmp(content, "true") == 0;
         } else {
             sprintf(json_error_buffer, "Unexpected keyword token at index %zu: %s", *index, content);
             return json_error;
@@ -107,10 +107,10 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
 
         if (parse_long(content, &long_value)) {
             value.type = JSON_INT;
-            value.value.integer = long_value;
+            value.as.integer = long_value;
         } else if (parse_double(content, &double_value)) {
             value.type = JSON_DECIMAL;
-            value.value.decimal = double_value;
+            value.as.decimal = double_value;
         } else {
             // Invalid numeric value
             sprintf(json_error_buffer, "Invalid numeric value at index %zu: %s", *index - 1, content);
@@ -365,33 +365,33 @@ char* json_value_to_string(struct json_value value) {
 
     char* buff = (char*)malloc(256);
     if(value.type == JSON_STRING) {
-        sprintf(buff, "\"%s\"", value.value.string);
+        sprintf(buff, "\"%s\"", value.as.string);
     } else if (value.type == JSON_BOOLEAN) {
-        sprintf(buff, "%s", (value.value.boolean ? "true" : "false"));
+        sprintf(buff, "%s", (value.as.boolean ? "true" : "false"));
     } else if (value.type == JSON_NULL) {
         sprintf(buff, "null");
     } else if (value.type == JSON_DECIMAL) {
-        sprintf(buff, "%g", value.value.decimal);
+        sprintf(buff, "%g", value.as.decimal);
     } else if (value.type == JSON_INT) {
-        sprintf(buff, "%ld", value.value.integer);
+        sprintf(buff, "%ld", value.as.integer);
     } else if (value.type == JSON_OBJECT) {
         free(buff);
-        return object_to_string(value.value.object);
+        return object_to_string(value.as.object);
     } else if (value.type == JSON_ARRAY) {
-        if(value.value.array->size == 0 ) {
+        if(value.as.array->size == 0 ) {
             sprintf(buff, "[]");
             return buff;
         }
 
-        char* array_buff = (char*)malloc(256 * value.value.array->size);
+        char* array_buff = (char*)malloc(256 * value.as.array->size);
         int written = sprintf(array_buff, "[ ");
-        for (size_t i = 0; i < value.value.array->size; i++)
+        for (size_t i = 0; i < value.as.array->size; i++)
         {
-            char* s_buff = json_value_to_string(value.value.array->values[i]);
+            char* s_buff = json_value_to_string(value.as.array->values[i]);
             written += sprintf(array_buff+written, "%s", s_buff);
 
             free(s_buff);
-            if(i + 1 >= value.value.array->size) {
+            if(i + 1 >= value.as.array->size) {
                 continue;
             }
 
@@ -425,7 +425,7 @@ struct json_value json_parse_string(const char* json_string, allocator alloc) {
 
     struct json_value json_error = {
         .type = JSON_ERROR,
-        .value.string = json_error_buffer
+        .as.string = json_error_buffer
     };
 
 

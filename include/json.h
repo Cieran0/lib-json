@@ -36,7 +36,7 @@ struct json_value {
         char* string;
         struct json_object* object;
         struct json_array* array;
-    } value;
+    } as;
 };
 
 struct json_pair {
