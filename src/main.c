@@ -34,8 +34,9 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
 
     switch (tokens[*index].type) {
     case STRING_TOKEN: {
-
-        value.value.string = tokens[*index].content; // Should be copied so it can get freed independent of tokens
+        size_t size = strlen(tokens[*index].content);
+        value.value.string = alloc(size + 1); 
+        strncpy(value.value.string, tokens[*index].content, size);
         value.type = JSON_STRING;
         (*index)++;
         break;
@@ -142,7 +143,9 @@ struct json_pair* get_json_pair(token* tokens, size_t* index, allocator alloc) {
 
     struct json_pair* pair = alloc(sizeof(struct json_pair));
 
-    key = tokens[*index].content; //Should copy
+    size_t size = strlen(tokens[*index].content);
+    key = alloc(size + 1);
+    strncpy(key, tokens[*index].content, size);
 
     *index += 1;
 
