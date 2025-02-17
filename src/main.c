@@ -36,7 +36,7 @@ struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) 
     case STRING_TOKEN: {
         size_t size = strlen(tokens[*index].content);
         value.value.string = alloc(size + 1); 
-        strncpy(value.value.string, tokens[*index].content, size);
+        strncpy(value.value.string, tokens[*index].content, size+1);
         value.type = JSON_STRING;
         (*index)++;
         break;
@@ -145,7 +145,7 @@ struct json_pair* get_json_pair(token* tokens, size_t* index, allocator alloc) {
 
     size_t size = strlen(tokens[*index].content);
     key = alloc(size + 1);
-    strncpy(key, tokens[*index].content, size);
+    strncpy(key, tokens[*index].content, size+1);
 
     *index += 1;
 
