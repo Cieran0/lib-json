@@ -9,12 +9,12 @@
 
 char json_error_buffer[512];
 
-struct json_object* extract_object(token* tokens, size_t* index);
-struct json_array* extract_array(token* tokens, size_t* index);
+struct json_object* extract_object(token* tokens, size_t* index, allocator alloc);
+struct json_array* extract_array(token* tokens, size_t* index, allocator alloc);
 char* json_value_to_string(struct json_value value);
 
 
-struct json_value get_json_value(token* tokens, size_t* index) {
+struct json_value get_json_value(token* tokens, size_t* index, allocator alloc) {
     struct json_value json_error = {
         .type = JSON_ERROR,
         .value.string = json_error_buffer
@@ -42,7 +42,7 @@ struct json_value get_json_value(token* tokens, size_t* index) {
     }
     case KEY_SYMBOL_TOKEN: {
         if (tokens[*index].content[0] == '{') {
-            struct json_object* object = extract_object(tokens, index);
+            struct json_object* object = extract_object(tokens, index, alloc);
 
             if(object == NULL) {
                 sprintf(json_error_buffer, "Memory allocation failure");
@@ -60,7 +60,7 @@ struct json_value get_json_value(token* tokens, size_t* index) {
             value.type = JSON_OBJECT;
             value.value.object = object;
         } else if (tokens[*index].content[0] == '[') {
-            struct json_array* array = extract_array(tokens, index);
+            struct json_array* array = extract_array(tokens, index, alloc);
 
             if(array == NULL) {
                 sprintf(json_error_buffer, "Memory allocation failure");
@@ -128,7 +128,7 @@ struct json_value get_json_value(token* tokens, size_t* index) {
 }
 
 
-struct json_pair* get_json_pair(token* tokens, size_t* index) {
+struct json_pair* get_json_pair(token* tokens, size_t* index, allocator alloc) {
 
     if (tokens[*index].type == KEY_SYMBOL_TOKEN && tokens[*index].content[0] == ',' ) {
         (*index) += 1;
@@ -140,21 +140,21 @@ struct json_pair* get_json_pair(token* tokens, size_t* index) {
     char* key = NULL;
     struct json_value value = {};
 
-    struct json_pair* pair = malloc(sizeof(struct json_pair));
+    struct json_pair* pair = alloc(sizeof(struct json_pair));
 
     key = tokens[*index].content; //Should copy
 
     *index += 1;
 
     if(tokens[*index].type != KEY_SYMBOL_TOKEN || tokens[*index].content[0] != ':') {
-        free(pair);
+        //free(pair);
         return NULL; //TODO: Fix this to give a proper error message!
     }
 
     *index += 1;
 
 
-    value = get_json_value(tokens, index);
+    value = get_json_value(tokens, index, alloc);
 
     pair->key=key;
     pair->value = value;
@@ -179,8 +179,8 @@ void insert_pair(struct json_object* object, struct json_pair* pair) {
     object->tail = object->tail->next;
 }
 
-struct json_object* extract_object(token* tokens, size_t* index) {
-    struct json_object* object = malloc(sizeof(struct json_object));
+struct json_object* extract_object(token* tokens, size_t* index, allocator alloc) {
+    struct json_object* object = alloc(sizeof(struct json_object));
     if (!object) {
         return NULL;
     }
@@ -205,7 +205,7 @@ struct json_object* extract_object(token* tokens, size_t* index) {
             return object;
         }
 
-        struct json_pair* next_pair = get_json_pair(tokens, index);
+        struct json_pair* next_pair = get_json_pair(tokens, index, alloc);
 
         if (!next_pair) {
             sprintf(json_error_buffer,"Error parsing key-value pair at index %zu", *index);
@@ -282,8 +282,8 @@ size_t get_array_size(token* tokens, size_t* index) {
     return size;
 }
 
-struct json_array* extract_array(token* tokens, size_t* index) {
-    struct json_array* array = malloc(sizeof(struct json_array));
+struct json_array* extract_array(token* tokens, size_t* index, allocator alloc) {
+    struct json_array* array = alloc(sizeof(struct json_array));
 
     if (!array) {
         return NULL;
@@ -295,7 +295,7 @@ struct json_array* extract_array(token* tokens, size_t* index) {
     size_t size = get_array_size(tokens, index);
 
     array->size = size;
-    array->values = malloc(sizeof(struct json_value) * size);
+    array->values = alloc(sizeof(struct json_value) * size);
     if (!array->values) {
         sprintf(json_error_buffer, "Memory allocation failed for array values");
         array->error = json_error_buffer;
@@ -303,7 +303,7 @@ struct json_array* extract_array(token* tokens, size_t* index) {
     }
 
     for (size_t i = 0; i < size; i++) {
-        array->values[i] = get_json_value(tokens, index);
+        array->values[i] = get_json_value(tokens, index, alloc);
 
         if(array->values[i].type == JSON_ERROR) {
             array->error = json_error_buffer;
@@ -416,7 +416,7 @@ bool is_ascii_only(const char *str) {
     return true;
 }
 
-struct json_value json_parse_string(const char* json_string) {
+struct json_value json_parse_string(const char* json_string, allocator alloc) {
     static const char* keywords[] = {"null", "true", "false"};
     static const char* key_symbols = "{}:,[]";
 
@@ -437,12 +437,14 @@ struct json_value json_parse_string(const char* json_string) {
     while (tokens[++token_len].type != END_OF_TOKENS);;
 
     size_t index = 0;
-    struct json_value value = get_json_value(tokens, &index);
+    struct json_value value = get_json_value(tokens, &index, alloc);
 
     if(index != token_len) {
         sprintf(json_error_buffer, "Trailing"); //TODO: better error? Idk what it should say
         return json_error;
     }
+
+    free(tokens);
 
     return value;
 }

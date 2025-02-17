@@ -45,6 +45,7 @@ struct json_pair {
     struct json_pair* next;
 };
 
+typedef void* (*allocator)(size_t);
 
-struct json_value json_parse_string(const char* json_string);
+struct json_value json_parse_string(const char* json_string, allocator alloc);
 char* json_value_to_string(struct json_value value);
